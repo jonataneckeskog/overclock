@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crates/overclock-core",
+    "crates/overclock-cli",
+]
+resolver = "2"
