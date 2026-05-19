@@ -1,22 +1,7 @@
+use chumsky::{Boxed, error::Rich, extra};
+
 pub mod expr;
-pub mod stmt;
+pub mod lex;
 
-use chumsky::prelude::*;
-
-pub type BoxedParser<'a, O> = Boxed<'a, 'a, &'a str, O, extra::Err<Rich<'a, char>>>;
-
-pub fn comment<'a>() -> BoxedParser<'a, ()> {
-    just("//")
-        .then(any().and_is(just('\n').not()).repeated())
-        .ignored()
-        .boxed()
-}
-
-pub fn skip<'a>() -> BoxedParser<'a, ()> {
-    text::whitespace()
-        .at_least(1)
-        .or(comment())
-        .repeated()
-        .ignored()
-        .boxed()
-}
+pub use lex::Token;
+pub type BoxedParser<'a, O> = Boxed<'a, 'a, &'a [Token], O, extra::Err<Rich<'a, Token>>>;
