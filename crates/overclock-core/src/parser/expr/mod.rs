@@ -3,21 +3,21 @@ use chumsky::prelude::*;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum BinaryOp {
-    Add,
-    Sub,
+    Add, // "+"
+    Sub, // "-"
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expr {
-    Int(i64),
-    Var(String),
-    Binary(Box<Expr>, BinaryOp, Box<Expr>),
-    Assign(String, Box<Expr>),
-    Pipe(Box<Expr>, Box<Expr>),
-    Lambda(String, Box<Expr>),
-    List(Vec<Expr>),
-    Call(Box<Expr>, Vec<Expr>),
-    Member(Box<Expr>, String),
+    Int(i64),                               // "42"
+    Var(String),                            // "x"
+    Binary(Box<Expr>, BinaryOp, Box<Expr>), // "a + b"
+    Assign(String, Box<Expr>),              // "x = 5"
+    Pipe(Box<Expr>, Box<Expr>),             // "a -> b"
+    Lambda(String, Box<Expr>),              // "x => x"
+    List(Vec<Expr>),                        // "[1, 2]"
+    Call(Box<Expr>, Vec<Expr>),             // "f(x)"
+    Member(Box<Expr>, String),              // "obj.prop"
 }
 
 pub mod atom;
@@ -29,6 +29,7 @@ pub mod postfix;
 #[cfg(test)]
 mod tests;
 
+/// Parses an expression, supporting assignments, lambdas, pipes, and other constructs.
 pub fn expr<'a>() -> BoxedParser<'a, Expr> {
     recursive(|expr| {
         let boxed_expr = expr.boxed();

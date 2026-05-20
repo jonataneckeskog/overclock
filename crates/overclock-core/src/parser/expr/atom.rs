@@ -1,6 +1,7 @@
 use crate::parser::{BoxedParser, lex::Token, expr::Expr};
 use chumsky::prelude::*;
 
+/// Parses an integer literal.
 fn int<'a>() -> BoxedParser<'a, Expr> {
     select! { Token::Num(val) => val }.try_map(|val, span| {
         val.parse::<i64>()
@@ -9,10 +10,12 @@ fn int<'a>() -> BoxedParser<'a, Expr> {
     }).boxed()
 }
 
+/// Parses a variable identifier.
 fn var<'a>() -> BoxedParser<'a, Expr> {
     select! { Token::Ident(name) => Expr::Var(name) }.boxed()
 }
 
+/// Parses a list literal, e.g., [1, 2, 3].
 fn list<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
     expr
         .separated_by(just(Token::Comma))
@@ -23,12 +26,14 @@ fn list<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
         .boxed()
 }
 
+/// Parses a parenthesized expression.
 fn group<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
     expr
         .delimited_by(just(Token::LParen), just(Token::RParen))
         .boxed()
 }
 
+/// Parses an atomic expression (integers, variables, lists, or groups).
 pub fn atom<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
     choice((int(), var(), list(expr.clone()), group(expr))).boxed()
 }

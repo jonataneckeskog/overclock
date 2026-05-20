@@ -1,10 +1,12 @@
 use crate::parser::{BoxedParser, lex::Token, expr::{Expr, binary::binary}};
 use chumsky::prelude::*;
 
+/// Parses the pipe operator (->).
 fn pipe_op<'a>() -> BoxedParser<'a, Token> {
     just(Token::Arrow).boxed()
 }
 
+/// Parses pipe expressions, e.g., a -> b.
 pub fn pipe<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
     binary(expr.clone()).foldl(
         pipe_op().then(binary(expr)).repeated(),

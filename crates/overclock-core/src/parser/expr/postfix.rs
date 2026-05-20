@@ -1,11 +1,13 @@
 use crate::parser::{BoxedParser, lex::Token, expr::{Expr, atom::atom}};
 use chumsky::prelude::*;
 
+/// Represents various postfix operations.
 pub enum PostfixOp {
-    Call(Vec<Expr>),
-    Member(String),
+    Call(Vec<Expr>), // "(a, b)"
+    Member(String),  // ".prop" or "::prop"
 }
 
+/// Parses a function call operation.
 fn call_op<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, PostfixOp> {
     expr
         .separated_by(just(Token::Comma))
@@ -16,6 +18,7 @@ fn call_op<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, PostfixOp> {
         .boxed()
 }
 
+/// Parses a dot member access, e.g., .foo or .-0.
 fn dot_member_op<'a>() -> BoxedParser<'a, PostfixOp> {
     just(Token::Dot)
         .ignore_then(
@@ -27,6 +30,7 @@ fn dot_member_op<'a>() -> BoxedParser<'a, PostfixOp> {
         .boxed()
 }
 
+/// Parses a double-colon member access, e.g., ::bar.
 fn colon_member_op<'a>() -> BoxedParser<'a, PostfixOp> {
     just(Token::DoubleColon)
         .ignore_then(select! { Token::Ident(name) => name })
@@ -34,6 +38,7 @@ fn colon_member_op<'a>() -> BoxedParser<'a, PostfixOp> {
         .boxed()
 }
 
+/// Parses postfix expressions like function calls and member access.
 pub fn postfix<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
     let op = choice((call_op(expr.clone()), dot_member_op(), colon_member_op()));
 
