@@ -1,4 +1,6 @@
-use crate::parser::{BoxedParser, lex::Token, expr::{Expr, pipe::pipe}};
+use crate::ast::Expr;
+use crate::parser::{BoxedParser, lex::Token};
+use super::pipe::pipe;
 use chumsky::prelude::*;
 
 /// Parses a lambda expression, e.g., x => x + 1.
@@ -18,13 +20,14 @@ pub fn lambda<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::lex::lexer;
+    use crate::ast::Literal;
+    use crate::parser::lexer;
     use chumsky::Parser;
 
     #[test]
     fn test_lambda_only() {
         let tokens = lexer().parse("x => 42").into_result().unwrap();
-        let dummy = any().map(|_| Expr::Int(42)).ignored().map(|_| Expr::Int(42)).boxed();
+        let dummy = any().map(|_| Expr::Lit(Literal::Int(42))).ignored().map(|_| Expr::Lit(Literal::Int(42))).boxed();
         let ast = lambda_only(dummy).parse(&tokens[..]).into_result().unwrap();
         if let Expr::Lambda(name, _) = ast {
             assert_eq!(name, "x");

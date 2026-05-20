@@ -1,4 +1,6 @@
-use crate::parser::{BoxedParser, lex::Token, expr::{Expr, binary::binary}};
+use crate::ast::Expr;
+use crate::parser::{BoxedParser, lex::Token};
+use super::binary::binary;
 use chumsky::prelude::*;
 
 /// Parses the pipe operator (->).
@@ -17,7 +19,7 @@ pub fn pipe<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::lex::lexer;
+    use crate::parser::lexer;
     use chumsky::Parser;
 
     #[test]

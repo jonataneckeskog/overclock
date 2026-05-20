@@ -1,13 +1,33 @@
-use crate::parser::{BoxedParser, lex::Token, expr::Expr};
+use crate::ast::{Expr, Literal};
+use crate::parser::{BoxedParser, lex::Token};
 use chumsky::prelude::*;
+
+/// Parses a boolean literal.
+fn bool<'a>() -> BoxedParser<'a, Expr> {
+    select! { Token::Bool(val) => Expr::Lit(Literal::Bool(val)) }.boxed()
+}
 
 /// Parses an integer literal.
 fn int<'a>() -> BoxedParser<'a, Expr> {
-    select! { Token::Num(val) => val }.try_map(|val, span| {
+    select! { Token::Int(val) => val }.try_map(|val, span| {
         val.parse::<i64>()
-            .map(Expr::Int)
+            .map(|n| Expr::Lit(Literal::Int(n)))
             .map_err(|_| Rich::custom(span, "Not a valid 64-bit integer"))
     }).boxed()
+}
+
+/// Parses a float literal.
+fn float<'a>() -> BoxedParser<'a, Expr> {
+    select! { Token::Float(val) => val }.try_map(|val, span| {
+        val.parse::<f64>()
+            .map(|n| Expr::Lit(Literal::Float(n)))
+            .map_err(|_| Rich::custom(span, "Not a valid 64-bit float"))
+    }).boxed()
+}
+
+/// Parses a character literal.
+fn char<'a>() -> BoxedParser<'a, Expr> {
+    select! { Token::Char(val) => Expr::Lit(Literal::Char(val)) }.boxed()
 }
 
 /// Parses a variable identifier.
@@ -33,22 +53,52 @@ fn group<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
         .boxed()
 }
 
-/// Parses an atomic expression (integers, variables, lists, or groups).
+/// Parses an atomic expression (literals, variables, lists, or groups).
 pub fn atom<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
-    choice((int(), var(), list(expr.clone()), group(expr))).boxed()
+    choice((
+        bool(),
+        float(),
+        int(),
+        char(),
+        var(),
+        list(expr.clone()),
+        group(expr),
+    ))
+    .boxed()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::lex::lexer;
+    use crate::parser::lexer;
     use chumsky::Parser;
+
+    #[test]
+    fn test_bool() {
+        let tokens = lexer().parse("true").into_result().unwrap();
+        let ast = bool().parse(&tokens[..]).into_result().unwrap();
+        assert_eq!(ast, Expr::Lit(Literal::Bool(true)));
+    }
 
     #[test]
     fn test_int() {
         let tokens = lexer().parse("123").into_result().unwrap();
         let ast = int().parse(&tokens[..]).into_result().unwrap();
-        assert_eq!(ast, Expr::Int(123));
+        assert_eq!(ast, Expr::Lit(Literal::Int(123)));
+    }
+
+    #[test]
+    fn test_float() {
+        let tokens = lexer().parse("3.14").into_result().unwrap();
+        let ast = float().parse(&tokens[..]).into_result().unwrap();
+        assert_eq!(ast, Expr::Lit(Literal::Float(3.14)));
+    }
+
+    #[test]
+    fn test_char() {
+        let tokens = lexer().parse("'a'").into_result().unwrap();
+        let ast = char().parse(&tokens[..]).into_result().unwrap();
+        assert_eq!(ast, Expr::Lit(Literal::Char('a')));
     }
 
     #[test]

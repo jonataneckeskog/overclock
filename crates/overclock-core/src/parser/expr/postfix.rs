@@ -1,4 +1,6 @@
-use crate::parser::{BoxedParser, lex::Token, expr::{Expr, atom::atom}};
+use crate::ast::Expr;
+use crate::parser::{BoxedParser, lex::Token};
+use super::atom::atom;
 use chumsky::prelude::*;
 
 /// Represents various postfix operations.
@@ -23,7 +25,7 @@ fn dot_member_op<'a>() -> BoxedParser<'a, PostfixOp> {
     just(Token::Dot)
         .ignore_then(
             select! { Token::Ident(name) => name }.or(just(Token::Minus)
-                .then(select! { Token::Num(n) => n })
+                .then(select! { Token::Int(n) => n })
                 .map(|(_, n)| format!("-{}", n))),
         )
         .map(PostfixOp::Member)
@@ -51,7 +53,7 @@ pub fn postfix<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::lex::lexer;
+    use crate::parser::lexer;
     use chumsky::Parser;
 
     #[test]

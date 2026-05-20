@@ -1,30 +1,12 @@
+use crate::ast::Expr;
 use super::{BoxedParser, lex::Token};
 use chumsky::prelude::*;
 
-#[derive(Debug, PartialEq, Clone)]
-pub enum BinaryOp {
-    Add, // "+"
-    Sub, // "-"
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Expr {
-    Int(i64),                               // "42"
-    Var(String),                            // "x"
-    Binary(Box<Expr>, BinaryOp, Box<Expr>), // "a + b"
-    Assign(String, Box<Expr>),              // "x = 5"
-    Pipe(Box<Expr>, Box<Expr>),             // "a -> b"
-    Lambda(String, Box<Expr>),              // "x => x"
-    List(Vec<Expr>),                        // "[1, 2]"
-    Call(Box<Expr>, Vec<Expr>),             // "f(x)"
-    Member(Box<Expr>, String),              // "obj.prop"
-}
-
-pub mod atom;
-pub mod binary;
-pub mod lambda;
-pub mod pipe;
-pub mod postfix;
+mod atom;
+mod binary;
+mod lambda;
+mod pipe;
+mod postfix;
 
 #[cfg(test)]
 mod tests;

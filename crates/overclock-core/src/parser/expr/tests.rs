@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::parser::expr::BinaryOp;
-    use crate::parser::expr::Expr;
-    use crate::parser::expr::expr;
-    use crate::parser::lex::lexer;
+    use crate::ast::{BinaryOp, Expr};
+    use crate::parser::expr;
+    use crate::parser::lexer;
     use chumsky::Parser;
 
     #[test]

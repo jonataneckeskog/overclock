@@ -1,4 +1,6 @@
-use crate::parser::{BoxedParser, lex::Token, expr::{Expr, BinaryOp, postfix::postfix}};
+use crate::ast::{Expr, BinaryOp};
+use crate::parser::{BoxedParser, lex::Token};
+use super::postfix::postfix;
 use chumsky::prelude::*;
 
 /// Parses addition and subtraction operators.
@@ -22,7 +24,7 @@ pub fn binary<'a>(expr: BoxedParser<'a, Expr>) -> BoxedParser<'a, Expr> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::lex::lexer;
+    use crate::parser::lexer;
     use chumsky::Parser;
 
     #[test]
