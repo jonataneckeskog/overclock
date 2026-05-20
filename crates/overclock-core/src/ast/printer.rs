@@ -3,70 +3,80 @@ use std::fmt;
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.pretty_print(0))
+        self.fmt_with_depth(f, 0)
     }
 }
 
 impl Expr {
-    /// Recursively prints the AST with indentation based on depth.
-    pub fn pretty_print(&self, depth: usize) -> String {
+    /// Recursively writes the AST directly into the formatter buffer.
+    fn fmt_with_depth(&self, f: &mut fmt::Formatter<'_>, depth: usize) -> fmt::Result {
         let indent = "  ".repeat(depth);
+
         match self {
-            Expr::Lit(l) => format!("{}", l),
-            Expr::Var(v) => v.clone(),
+            Expr::Lit(l) => write!(f, "{}", l),
+            Expr::Var(v) => write!(f, "{}", v),
             Expr::Binary(lhs, op, rhs) => {
-                format!("{} {} {}", lhs.pretty_print(0), op, rhs.pretty_print(0))
+                lhs.fmt_with_depth(f, depth)?;
+                write!(f, " {} ", op)?;
+                rhs.fmt_with_depth(f, depth)
             }
             Expr::Assign(name, body) => {
-                format!("{} = {}", name, body.pretty_print(depth))
+                write!(f, "{} = ", name)?;
+                body.fmt_with_depth(f, depth)
             }
             Expr::Pipe(lhs, rhs) => {
-                match &**lhs {
-                    Expr::Pipe(_, _) => {
-                        format!(
-                            "{}\n  {}-> {}",
-                            lhs.pretty_print(depth),
-                            indent,
-                            rhs.pretty_print(depth).trim_start()
-                        )
-                    }
-                    _ => {
-                        format!(
-                            "{}\n  {}-> {}",
-                            lhs.pretty_print(depth),
-                            indent,
-                            rhs.pretty_print(depth + 1).trim_start()
-                        )
-                    }
-                }
+                lhs.fmt_with_depth(f, depth)?;
+                write!(f, "\n{}  -> ", indent)?;
+
+                let next_depth = if matches!(**lhs, Expr::Pipe(_, _)) {
+                    depth
+                } else {
+                    depth + 1
+                };
+
+                rhs.fmt_with_depth(f, next_depth)
             }
             Expr::Lambda(arg, body) => {
-                format!("{} => {}", arg, body.pretty_print(depth))
+                write!(f, "{} => ", arg)?;
+                body.fmt_with_depth(f, depth)
             }
             Expr::List(items) => {
-                if items.is_empty() {
-                    "[]".to_string()
-                } else {
-                    let inner = items
-                        .iter()
-                        .map(|i| i.pretty_print(depth + 1))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    format!("[{}]", inner)
+                write!(f, "[")?;
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    item.fmt_with_depth(f, depth + 1)?;
                 }
+                write!(f, "]")
             }
             Expr::Call(func, args) => {
-                let args_str = args
-                    .iter()
-                    .map(|a| a.pretty_print(0))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("{}({})", func.pretty_print(0), args_str)
+                func.fmt_with_depth(f, depth)?;
+                write!(f, "(")?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    arg.fmt_with_depth(f, depth)?;
+                }
+                write!(f, ")")
             }
             Expr::Member(obj, member) => {
-                format!("{}.{}", obj.pretty_print(0), member)
+                obj.fmt_with_depth(f, depth)?;
+                write!(f, ".{}", member)
             }
         }
+    }
+
+    /// Recursively prints the AST with indentation based on depth.
+    pub fn pretty_print(&self, depth: usize) -> String {
+        struct Wrapper<'a>(&'a Expr, usize);
+        impl fmt::Display for Wrapper<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                self.0.fmt_with_depth(f, self.1)
+            }
+        }
+        format!("{}", Wrapper(self, depth))
     }
 }
 
