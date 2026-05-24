@@ -2,5 +2,6 @@
 members = [
     "crates/overclock-core",
     "crates/overclock-cli",
+    "crates/downstream-rs",
 ]
 resolver = "2"
