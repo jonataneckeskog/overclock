@@ -2,6 +2,10 @@
 name = "downstream-rs"
 version = "0.1.0"
 edition = "2024"
+description = "A push-based asynchronous data orchestration library for building complex pipeline topologies."
+license = "MIT"
+keywords = ["async", "stream", "pipeline", "topology", "orchestration"]
+categories = ["asynchronous", "rust-patterns"]
 
 [dependencies]
 futures = "0.3.32"
