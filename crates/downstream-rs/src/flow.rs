@@ -118,7 +118,7 @@ where
                     return;
                 }
 
-                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(32);
+                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(self.capacity);
 
                 if let Some(prev) = previous_transform {
                     prev(source_rx, mid_tx);

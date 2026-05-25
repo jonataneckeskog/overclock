@@ -39,12 +39,32 @@ where
         }
     }
 
-    /// Allows free-form composition by passing the pipeline through a custom function
-    pub fn apply<F, NewOut>(self, custom_stage: F) -> Pipeline<In, NewOut>
+    /// Physically connects a fully-constructed Pipeline onto the end of this one.
+    pub fn apply<NewOut>(self, other: Pipeline<Out, NewOut>) -> Pipeline<In, NewOut>
     where
-        F: FnOnce(Self) -> Pipeline<In, NewOut>,
+        NewOut: Send + 'static,
     {
-        custom_stage(self)
+        let transform_a = self.transform;
+        let transform_b = other.transform;
+        let capacity = self.capacity;
+
+        Pipeline {
+            capacity,
+            transform: Some(Box::new(move |source_rx, final_tx| {
+                // 1. Create the junction channel between Pipeline A and Pipeline B
+                let (mid_tx, mid_rx) = tokio::sync::mpsc::channel::<Out>(capacity);
+
+                // 2. Solder Pipeline A to the junction
+                if let Some(a) = transform_a {
+                    a(source_rx, mid_tx);
+                }
+
+                // 3. Solder Pipeline B to the junction
+                if let Some(b) = transform_b {
+                    b(mid_rx, final_tx);
+                }
+            })),
+        }
     }
 
     /// Caps the pipeline with a final action, returning an executable blueprint
