@@ -5,7 +5,7 @@ where
     In: Send + 'static,
     Out: Send + 'static,
 {
-    /// Caps the pipeline with a final action, returning an executable blueprint
+    /// Caps the pipeline with a terminal action.
     pub fn sink<F>(self, action: F) -> Pipeline<In, ()>
     where
         F: Fn(Out) + Send + Sync + 'static,
@@ -33,7 +33,7 @@ where
         }
     }
 
-    // Leaves the exhaust pipe open and hands out the live wire
+    /// Converts the pipeline into a Receiver, allowing manual consumption.
     pub fn into_stream(
         mut self,
         source_rx: tokio::sync::mpsc::Receiver<In>,
@@ -53,7 +53,10 @@ impl<In> Pipeline<In, ()>
 where
     In: Send + 'static,
 {
-    /// Plugs in any generic Stream, fires up execution, and waits for ALL tasks to complete
+    /// Executes the pipeline using the provided Stream as a source.
+    /// 
+    /// This method awaits the completion of all internal tasks, ensuring that
+    /// side effects and branches have finished before returning.
     pub async fn run<S>(mut self, stream: S) -> Result<(), tokio::task::JoinError>
     where
         S: futures::Stream<Item = In> + Send + 'static,

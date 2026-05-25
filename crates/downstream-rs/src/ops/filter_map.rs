@@ -5,7 +5,10 @@ where
     In: Send + 'static,
     Out: Send + 'static,
 {
-    /// Transforms the data from type `Out` to type `NewOut`
+    /// Transforms items from type `Out` to type `NewOut`.
+    /// 
+    /// If the closure returns `Some(item)`, the item continues downstream.
+    /// If it returns `None`, the item is dropped from the pipeline.
     pub fn pipe<F, NewOut>(self, transform: F) -> Pipeline<In, NewOut>
     where
         // The closure MUST return an Option!
@@ -38,10 +41,10 @@ where
         }
     }
 
-    /// Transforms data in parallel using a worker pool.
-    ///
-    /// **Warning:** This operator does NOT preserve item ordering.
-    /// It automatically scales the number of workers based on available CPU cores.
+    /// Processes items in parallel using a pool of workers.
+    /// 
+    /// The number of workers is automatically scaled based on available CPU cores.
+    /// **Note:** This operator does not guarantee that items will stay in their original order.
     pub fn par_pipe<F, NewOut>(self, transform: F) -> Pipeline<In, NewOut>
     where
         F: Fn(Out) -> Option<NewOut> + Send + Sync + 'static,

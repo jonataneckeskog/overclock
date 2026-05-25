@@ -5,7 +5,7 @@ where
     In: Send + 'static,
     Out: Send + 'static,
 {
-    /// Physically connects a fully-constructed Pipeline onto the end of this one.
+    /// Appends a fully-constructed Pipeline onto the end of this one.
     pub fn apply<NewOut>(self, other: Pipeline<Out, NewOut>) -> Pipeline<In, NewOut>
     where
         NewOut: Send + 'static,
@@ -33,7 +33,7 @@ where
         }
     }
 
-    /// Zips another stream into this one, combining both inputs into a new output
+    /// Zips another stream into this one, combining inputs into a new output using a closure.
     pub fn join_with<Other, NewOut, F>(
         self,
         mut other_rx: tokio::sync::mpsc::Receiver<Other>,
@@ -75,13 +75,10 @@ where
         }
     }
 
-    /// Clones the stream, sending one copy down the `branch` pipeline,
-    /// and continuing the other copy down the main pipeline.
-    ///
-    /// **Note:** This acts as an 'eavesdropper'. The branch is strictly dependent on the
-    /// main pipeline's lifecycle. If the main pipeline stops accepting data
-    /// (e.g., via `.take()`), this operator stops pulling from upstream, effectively
-    /// terminating the branch as well.
+    /// Clones the stream into a secondary `branch` pipeline.
+    /// 
+    /// **Note:** The branch lifecycle is tied to the main pipeline. If the main
+    /// pipeline stops accepting data, the branch also terminates.
     pub fn tee<BranchOut>(self, mut branch: Pipeline<Out, BranchOut>) -> Pipeline<In, Out>
     where
         Out: Clone + Send + Sync + 'static,
@@ -129,10 +126,10 @@ where
         }
     }
 
-    /// Clones the stream to both a `branch` pipeline and the main pipeline.
-    ///
-    /// Unlike `tee`, `broadcast` will keep pulling from upstream as long as
-    /// **at least one** of the output channels (main or branch) is still alive.
+    /// Clones the stream into a secondary `branch` pipeline.
+    /// 
+    /// Unlike `tee`, `broadcast` keeps pulling from upstream as long as
+    /// **either** the main pipeline or the branch is still alive.
     pub fn broadcast<BranchOut>(self, mut branch: Pipeline<Out, BranchOut>) -> Pipeline<In, Out>
     where
         Out: Clone + Send + Sync + 'static,
@@ -192,7 +189,7 @@ where
         }
     }
 
-    /// Zips another stream into this one, returning a tuple of (SelfItem, OtherItem)
+    /// Zips another stream into this one, returning a tuple of (SelfItem, OtherItem).
     pub fn zip<Other>(
         self,
         mut other_rx: tokio::sync::mpsc::Receiver<Other>,
@@ -229,11 +226,9 @@ where
         }
     }
 
-    /// Conditionally routes data either down the main pipeline or into a side branch.
-    ///
-    /// The `switch` closure must return a `Result<NewOut, BranchOut>`.
-    /// - `Ok(item)` continues down the main pipeline.
-    /// - `Err(item)` is diverted into the `branch` pipeline.
+    /// Conditionally routes data into the main pipeline or a side branch.
+    /// 
+    /// Items returning `Ok` stay on the main pipe; items returning `Err` are diverted.
     pub fn route<NewOut, BranchOut, F>(
         self,
         mut branch: Pipeline<BranchOut, ()>,
@@ -292,7 +287,7 @@ where
         }
     }
 
-    /// Merges another stream of the same type into this one.
+    /// Interleaves items from another stream into the current pipeline.
     pub fn merge(self, mut other_rx: tokio::sync::mpsc::Receiver<Out>) -> Pipeline<In, Out>
     where
         Out: Send + 'static,
