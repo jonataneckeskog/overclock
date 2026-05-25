@@ -5,6 +5,37 @@ where
     In: Send + 'static,
     Out: Send + 'static,
 {
+    /// Halts execution for the specified number of seconds (as a float) before passing each item downstream
+    pub fn wait(self, seconds: f64) -> Pipeline<In, Out> {
+        let previous_transform = self.transform;
+        let baseline_capacity = self.capacity;
+
+        // Convert the floating-point seconds into a standard Duration upfront
+        let delay = std::time::Duration::from_secs_f64(seconds);
+
+        Pipeline {
+            capacity: baseline_capacity,
+            transform: Some(Box::new(move |source_rx, final_tx| {
+                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(baseline_capacity);
+
+                if let Some(prev) = previous_transform {
+                    prev(source_rx, mid_tx);
+                }
+
+                tokio::spawn(async move {
+                    while let Some(item) = mid_rx.recv().await {
+                        // Natively sleep for the floating-point duration
+                        tokio::time::sleep(delay).await;
+
+                        if final_tx.send(item).await.is_err() {
+                            break;
+                        }
+                    }
+                });
+            })),
+        }
+    }
+
     /// Executes a side effect (like logging or saving to a DB) and passes the data through untouched
     pub fn tap<F>(self, action: F) -> Pipeline<In, Out>
     where
