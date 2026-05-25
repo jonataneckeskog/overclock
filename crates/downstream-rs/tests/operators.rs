@@ -305,3 +305,23 @@ async fn test_wait() {
     // 2 items * 0.05s = 0.1s total wait
     assert!(start.elapsed() >= std::time::Duration::from_millis(100));
 }
+
+#[tokio::test]
+async fn test_pipeline_macro() {
+    use downstream_rs::pipeline;
+    let items = stream::iter(1..=3);
+    let results = Arc::new(Mutex::new(Vec::new()));
+    let results_clone = results.clone();
+
+    pipeline![
+        pipe(|x: i32| Some(x + 10)),
+        sink(move |x| {
+            results_clone.lock().unwrap().push(x);
+        })
+    ]
+    .run(items)
+    .await
+    .unwrap();
+
+    assert_eq!(*results.lock().unwrap(), vec![11, 12, 13]);
+}
