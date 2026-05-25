@@ -1,18 +1,18 @@
-use crate::PipeLine;
+use crate::Pipeline;
 
-impl<In, Out> PipeLine<In, Out>
+impl<In, Out> Pipeline<In, Out>
 where
     In: Send + 'static,
     Out: Send + 'static,
 {
     /// Executes a side effect (like logging or saving to a DB) and passes the data through untouched
-    pub fn tap<F>(self, action: F) -> PipeLine<In, Out>
+    pub fn tap<F>(self, action: F) -> Pipeline<In, Out>
     where
         F: Fn(&Out) + Send + Sync + 'static,
     {
         let previous_transform = self.transform;
 
-        PipeLine {
+        Pipeline {
             capacity: self.capacity,
             transform: Some(Box::new(move |source_rx, final_tx| {
                 let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(self.capacity);
@@ -40,7 +40,7 @@ where
         self,
         mut other_rx: tokio::sync::mpsc::Receiver<Other>,
         combine: F,
-    ) -> PipeLine<In, NewOut>
+    ) -> Pipeline<In, NewOut>
     where
         Other: Send + 'static,
         NewOut: Send + 'static,
@@ -48,7 +48,7 @@ where
     {
         let previous_transform = self.transform;
 
-        PipeLine {
+        Pipeline {
             capacity: self.capacity,
             transform: Some(Box::new(move |source_rx, final_tx| {
                 let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(self.capacity);
@@ -76,10 +76,10 @@ where
     }
 
     /// Closes the downstream connection after passing exactly `limit` items
-    pub fn take(self, limit: usize) -> PipeLine<In, Out> {
+    pub fn take(self, limit: usize) -> Pipeline<In, Out> {
         let previous_transform = self.transform;
 
-        PipeLine {
+        Pipeline {
             capacity: self.capacity,
             transform: Some(Box::new(move |source_rx, final_tx| {
                 // If limit is 0, don't even bother wiring up the rest of the stream
@@ -112,13 +112,13 @@ where
     }
 
     /// Emits a fixed-size ring buffer of the last `size` items, rolling forward with every new event.
-    pub fn window(self, size: usize) -> PipeLine<In, std::collections::VecDeque<Out>>
+    pub fn window(self, size: usize) -> Pipeline<In, std::collections::VecDeque<Out>>
     where
         Out: Clone + Send + 'static,
     {
         let previous_transform = self.transform;
 
-        PipeLine {
+        Pipeline {
             capacity: self.capacity,
             transform: Some(Box::new(move |source_rx, final_tx| {
                 let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(self.capacity);
@@ -149,10 +149,10 @@ where
     }
 
     /// Batches exactly `size` incoming items into a `Vec<Out>` before sending them downstream, dropping any leftover trailing items if the stream ends early.
-    pub fn chunk(self, size: usize) -> PipeLine<In, Vec<Out>> {
+    pub fn chunk(self, size: usize) -> Pipeline<In, Vec<Out>> {
         let previous_transform = self.transform;
 
-        PipeLine {
+        Pipeline {
             capacity: self.capacity,
             transform: Some(Box::new(move |source_rx, final_tx| {
                 let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(self.capacity);
@@ -183,11 +183,11 @@ where
     }
 
     /// Acts as a dedicated shock-absorber stage with a custom queue size
-    pub fn buffer(self, size: usize) -> PipeLine<In, Out> {
+    pub fn buffer(self, size: usize) -> Pipeline<In, Out> {
         let previous_transform = self.transform;
         let baseline_capacity = self.capacity;
 
-        PipeLine {
+        Pipeline {
             capacity: baseline_capacity, // Preserve the default for downstream
             transform: Some(Box::new(move |source_rx, final_tx| {
                 // This specific stage gets the massive capacity
