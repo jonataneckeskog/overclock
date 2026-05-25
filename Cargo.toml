@@ -4,5 +4,5 @@ members = [
     "crates/overclock-cli",
     "crates/downstream-rs",
     "apps/test-downstream"
-]
+, "apps/car-drive"]
 resolver = "2"
