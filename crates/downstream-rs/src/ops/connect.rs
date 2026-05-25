@@ -229,6 +229,69 @@ where
         }
     }
 
+    /// Conditionally routes data either down the main pipeline or into a side branch.
+    ///
+    /// The `switch` closure must return a `Result<NewOut, BranchOut>`.
+    /// - `Ok(item)` continues down the main pipeline.
+    /// - `Err(item)` is diverted into the `branch` pipeline.
+    pub fn route<NewOut, BranchOut, F>(
+        self,
+        mut branch: Pipeline<BranchOut, ()>,
+        switch: F,
+    ) -> Pipeline<In, NewOut>
+    where
+        F: Fn(Out) -> Result<NewOut, BranchOut> + Send + Sync + 'static,
+        NewOut: Send + 'static,
+        BranchOut: Send + 'static,
+    {
+        let previous_transform = self.transform;
+        let capacity = self.capacity;
+
+        Pipeline {
+            capacity,
+            transform: Some(Box::new(move |source_rx, final_tx, tasks| {
+                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(capacity);
+
+                if let Some(prev) = previous_transform {
+                    prev(source_rx, mid_tx, tasks);
+                }
+
+                // Prepare the branch
+                let (branch_in_tx, branch_in_rx) =
+                    tokio::sync::mpsc::channel::<BranchOut>(capacity);
+                let (branch_out_tx, mut branch_out_rx) = tokio::sync::mpsc::channel::<()>(capacity);
+
+                if let Some(branch_compile) = branch.transform.take() {
+                    branch_compile(branch_in_rx, branch_out_tx, tasks);
+                }
+
+                // Sink the branch output
+                let branch_exhaust_handle =
+                    tokio::spawn(async move { while branch_out_rx.recv().await.is_some() {} });
+                tasks.push(branch_exhaust_handle);
+
+                let main_handle = tokio::spawn(async move {
+                    while let Some(item) = mid_rx.recv().await {
+                        match switch(item) {
+                            Ok(main_item) => {
+                                if final_tx.send(main_item).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(branch_item) => {
+                                if branch_in_tx.send(branch_item).await.is_err() {
+                                    // Branch is dead, what do we do?
+                                    // For now, we drop the item.
+                                }
+                            }
+                        }
+                    }
+                });
+                tasks.push(main_handle);
+            })),
+        }
+    }
+
     /// Merges another stream of the same type into this one.
     pub fn merge(self, mut other_rx: tokio::sync::mpsc::Receiver<Out>) -> Pipeline<In, Out>
     where
