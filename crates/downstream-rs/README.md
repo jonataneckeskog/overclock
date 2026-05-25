@@ -1,8 +1,66 @@
 # Downstream-RS
 
-A push-based asynchronous data orchestration library for Rust.
+A push-based asynchronous data orchestration library for building complex pipeline topologies.
 
-Downstream-RS provides a declarative DSL for building complex data processing topologies (graphs) using Tokio tasks. It simplifies branching, merging, and parallel processing of async streams.
+## Quick Start
+
+```rust
+use downstream_rs::pipeline;
+
+#[tokio::main]
+async fn main() {
+    let items = futures::stream::iter(0..10);
+
+    // Declare the pipeline
+    let pipeline = pipeline![
+        pipe(|x: i32| Some(x)),
+        sink(|x| print!("{} ", x))
+    ];
+
+    // Run the pipeline individually
+    pipeline.run(items).await.unwrap();
+    
+    // Output: 0 1 2 3 4 5 6 7 8 9 
+}
+```
+
+## Examples
+
+### Audio Signal Smoothing
+Use `chunk` to batch spiky raw samples and calculate a moving average to smooth the signal.
+
+```rust
+// A stream of spiky audio data from an external source
+let raw_samples = get_audio_stream();
+
+pipeline![
+    // Group into batches of 10 to capture local variance
+    chunk(10),
+
+    // Smooth the signal by averaging the batch
+    pipe(|batch: Vec<f32>| {
+        let sum: f32 = batch.iter().sum();
+        Some(sum / batch.len() as f32)
+    }),
+
+    sink(|avg| print!("{:.2} ", avg))
+]
+.run(raw_samples)
+.await
+.unwrap();
+```
+
+### Complex Topology
+Build non-linear flows using primitives like `broadcast`.
+
+```rust
+pipeline![
+    broadcast(pipeline![
+        sink(|avg| eprintln!("[LOG] Current Volume: {:.2}", avg))
+    ]),
+    sink(|avg| play_audio(avg))
+]
+```
 
 ## Features
 
@@ -12,46 +70,9 @@ Downstream-RS provides a declarative DSL for building complex data processing to
 - **Reliable Lifecycle:** Automatic tracking and awaiting of all background tasks and branches.
 - **Ergonomic Macro:** Define entire pipelines using the `pipeline!` declarative syntax.
 
-## Why Downstream?
-
-Standard Rust `Streams` are excellent for linear, pull-based data. However, as soon as you need to:
-1. Send the same data to three different places simultaneously.
-2. Route items to different handlers based on their type.
-3. Automatically parallelize a single step of a pipe.
-
-...the boilerplate of manual `mpsc` channels, `Arc<Mutex>` locks, and `tokio::spawn` management becomes overwhelming. Downstream-RS abstracts this "plumbing" into a clean, readable API.
-
 ## Performance Note
 
-Downstream-RS is a **system-level orchestrator**. It is optimized for handling I/O-bound or compute-heavy tasks. Because it uses async channels and task switching between every stage, it is not intended for high-frequency, low-latency instruction-level math (like summing 10 million integers), where a raw `while` loop would be significantly faster.
-
-## Quick Start
-
-```rust
-use downstream_rs::pipeline;
-
-#[tokio::main]
-async fn main() {
-    let items = futures::stream::iter(0..100);
-
-    pipeline![
-        // 1. Double the numbers
-        pipe(|x: i32| Some(x * 2)),
-        
-        // 2. Parallel heavy processing (unordered)
-        par_pipe(|x| {
-            // simulate work
-            Some(x)
-        }),
-        
-        // 3. Final action
-        sink(|x| println!("Result: {}", x))
-    ]
-    .run(items)
-    .await
-    .unwrap();
-}
-```
+Downstream-RS is a **system-level orchestrator**. It is optimized for handling I/O-bound or compute-heavy tasks. Because it uses async channels and task switching between every stage, it is not intended for high-frequency, low-latency instruction-level math, where a raw `while` loop would be significantly faster.
 
 ## Operators
 
@@ -62,6 +83,12 @@ async fn main() {
 - `tee`: Unconditional dependent branching (eavesdropping).
 - `zip` / `merge`: Combining streams.
 - `take` / `wait` / `window` / `chunk`: Flow control and batching.
+
+## Why Downstream?
+
+Standard Rust streams are excellent for linear data processing. However, as data flows become more complex—involving branching, routing, or parallel execution—the implementation often requires significant boilerplate for manual channel management and task lifecycle tracking. 
+
+Downstream-RS provides a declarative abstraction for these operations, handling the underlying task orchestration and backpressure so you can focus on the pipeline logic.
 
 ## License
 
