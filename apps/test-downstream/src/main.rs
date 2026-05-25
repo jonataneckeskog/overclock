@@ -1,31 +1,19 @@
 use downstream_rs::Pipeline;
-use tokio::sync::mpsc;
+use futures::stream::{self};
 
 #[tokio::main]
 async fn main() {
-    let (tx, rx) = mpsc::channel::<u64>(32);
+    let fib_stream = stream::unfold((0u64, 1u64), |(a, b)| async move {
+        let next = a + b;
 
-    tokio::spawn(async move {
-        let mut a = 0;
-        let mut b = 1;
-
-        loop {
-            if tx.send(a).await.is_err() {
-                println!("Generator shutting down.");
-                break;
-            }
-
-            let next = a + b;
-            a = b;
-            b = next;
-        }
+        Some((a, (b, next)))
     });
 
     // Define and run the pipeline
     Pipeline::with_capacity(32)
         .take(10)
         .sink(|num| println!("Fibonacci: {}", num))
-        .run(rx)
+        .run(fib_stream)
         .await
         .unwrap();
 }

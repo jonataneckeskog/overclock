@@ -1,3 +1,5 @@
+use futures::StreamExt;
+
 use crate::Pipeline;
 
 impl<In, Out> Pipeline<In, Out>
@@ -91,18 +93,33 @@ impl<In> Pipeline<In, ()>
 where
     In: Send + 'static,
 {
-    /// Plugs in the raw data source, fires up execution, and returns a handle to await completion
-    pub fn run(
-        mut self,
-        source_rx: tokio::sync::mpsc::Receiver<In>,
-    ) -> tokio::task::JoinHandle<()> {
+    /// Plugs in any generic Stream, fires up execution, and returns a handle to await completion
+    pub fn run<S>(mut self, stream: S) -> tokio::task::JoinHandle<()>
+    where
+        S: futures::Stream<Item = In> + Send + 'static,
+    {
+        // Create a bridge channel for the stream to feed into
+        // It needs to be bridged to tokio since tokio is the runtime
+        let (source_tx, source_rx) = tokio::sync::mpsc::channel::<In>(self.capacity);
+
+        tokio::spawn(async move {
+            tokio::pin!(stream);
+
+            while let Some(item) = stream.next().await {
+                if source_tx.send(item).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        // Connect the end of the pipeline
         let (final_tx, mut final_rx) = tokio::sync::mpsc::channel::<()>(1);
 
         if let Some(compile) = self.transform.take() {
             compile(source_rx, final_tx);
         }
 
-        // Return the JoinHandle instead of dropping it
+        // Return the JoinHandle
         tokio::spawn(async move { while final_rx.recv().await.is_some() {} })
     }
 }
