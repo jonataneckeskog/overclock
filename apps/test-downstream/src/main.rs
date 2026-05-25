@@ -22,11 +22,10 @@ async fn main() {
     });
 
     // Define and run the pipeline
-    Pipeline::with_capacity(1)
+    Pipeline::with_capacity(32)
         .take(10)
         .sink(|num| println!("Fibonacci: {}", num))
-        .run(rx);
-
-    // Just a tiny sleep to let the async tasks finish printing before main exits
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        .run(rx)
+        .await
+        .unwrap();
 }

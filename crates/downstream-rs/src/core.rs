@@ -91,12 +91,18 @@ impl<In> Pipeline<In, ()>
 where
     In: Send + 'static,
 {
-    // Runs in the background and returns nothing
-    pub fn run(mut self, source_rx: tokio::sync::mpsc::Receiver<In>) {
+    /// Plugs in the raw data source, fires up execution, and returns a handle to await completion
+    pub fn run(
+        mut self,
+        source_rx: tokio::sync::mpsc::Receiver<In>,
+    ) -> tokio::task::JoinHandle<()> {
         let (final_tx, mut final_rx) = tokio::sync::mpsc::channel::<()>(1);
+
         if let Some(compile) = self.transform.take() {
             compile(source_rx, final_tx);
         }
-        tokio::spawn(async move { while final_rx.recv().await.is_some() {} });
+
+        // Return the JoinHandle instead of dropping it
+        tokio::spawn(async move { while final_rx.recv().await.is_some() {} })
     }
 }
