@@ -212,3 +212,96 @@ async fn test_apply() {
 
     assert_eq!(*results.lock().unwrap(), vec![1, 2]);
 }
+
+#[tokio::test]
+async fn test_take() {
+    let items = stream::iter(1..=10);
+    let results = Arc::new(Mutex::new(Vec::new()));
+    let results_clone = results.clone();
+
+    Pipeline::start()
+        .take(3)
+        .sink(move |x| {
+            results_clone.lock().unwrap().push(x);
+        })
+        .run(items)
+        .await
+        .unwrap();
+
+    assert_eq!(*results.lock().unwrap(), vec![1, 2, 3]);
+}
+
+#[tokio::test]
+async fn test_chunk() {
+    let items = stream::iter(1..=5);
+    let results = Arc::new(Mutex::new(Vec::new()));
+    let results_clone = results.clone();
+
+    Pipeline::start()
+        .chunk(2)
+        .sink(move |x| {
+            results_clone.lock().unwrap().push(x);
+        })
+        .run(items)
+        .await
+        .unwrap();
+
+    // The last item (5) should be dropped because chunk(2) expects exactly 2 items
+    assert_eq!(*results.lock().unwrap(), vec![vec![1, 2], vec![3, 4]]);
+}
+
+#[tokio::test]
+async fn test_window() {
+    let items = stream::iter(1..=3);
+    let results = Arc::new(Mutex::new(Vec::new()));
+    let results_clone = results.clone();
+
+    Pipeline::start()
+        .window(2)
+        .sink(move |x| {
+            results_clone.lock().unwrap().push(Vec::from(x));
+        })
+        .run(items)
+        .await
+        .unwrap();
+
+    // Window size 2: [1], [1, 2], [2, 3]
+    assert_eq!(
+        *results.lock().unwrap(),
+        vec![vec![1], vec![1, 2], vec![2, 3]]
+    );
+}
+
+#[tokio::test]
+async fn test_buffer() {
+    let items = stream::iter(1..=3);
+    let results = Arc::new(Mutex::new(Vec::new()));
+    let results_clone = results.clone();
+
+    Pipeline::start()
+        .buffer(100)
+        .sink(move |x| {
+            results_clone.lock().unwrap().push(x);
+        })
+        .run(items)
+        .await
+        .unwrap();
+
+    assert_eq!(*results.lock().unwrap(), vec![1, 2, 3]);
+}
+
+#[tokio::test]
+async fn test_wait() {
+    let items = stream::iter(1..=2);
+    let start = std::time::Instant::now();
+
+    Pipeline::start()
+        .wait(0.05)
+        .sink(|_| {})
+        .run(items)
+        .await
+        .unwrap();
+
+    // 2 items * 0.05s = 0.1s total wait
+    assert!(start.elapsed() >= std::time::Duration::from_millis(100));
+}
