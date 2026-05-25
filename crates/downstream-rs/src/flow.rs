@@ -1,5 +1,3 @@
-use tokio::sync::mpsc;
-
 use crate::PipeLine;
 
 impl<In, Out> PipeLine<In, Out>
@@ -7,32 +5,29 @@ where
     In: Send + 'static,
     Out: Send + 'static,
 {
-    /// Executes a side effect (like saving to a DB) and passes the data through untouched
+    /// Executes a side effect (like logging or saving to a DB) and passes the data through untouched
     pub fn tap<F>(self, action: F) -> PipeLine<In, Out>
     where
         F: Fn(&Out) + Send + Sync + 'static,
     {
         let previous_transform = self.transform;
-        // Wrap the closure in an Arc so it can be safely shared/moved into the async task
-        let action = std::sync::Arc::new(action);
 
         PipeLine {
+            capacity: self.capacity,
             transform: Some(Box::new(move |source_rx, final_tx| {
-                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(32);
+                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(self.capacity);
 
                 if let Some(prev) = previous_transform {
                     prev(source_rx, mid_tx);
                 }
 
-                let action_clone = action.clone();
                 tokio::spawn(async move {
                     while let Some(item) = mid_rx.recv().await {
-                        // Execute the side effect
-                        action_clone(&item);
+                        // Action is fully owned by this task now, no Arc needed.
+                        action(&item);
 
-                        // Pass the item through untouched
                         if final_tx.send(item).await.is_err() {
-                            return; // Downstream is dead
+                            return;
                         }
                     }
                 });
@@ -43,7 +38,7 @@ where
     /// Zips another stream into this one, combining both inputs into a new output
     pub fn join<Other, NewOut, F>(
         self,
-        mut other_rx: mpsc::Receiver<Other>,
+        mut other_rx: tokio::sync::mpsc::Receiver<Other>,
         combine: F,
     ) -> PipeLine<In, NewOut>
     where
@@ -52,29 +47,27 @@ where
         F: Fn(Out, Other) -> NewOut + Send + Sync + 'static,
     {
         let previous_transform = self.transform;
-        let combine = std::sync::Arc::new(combine);
 
         PipeLine {
+            capacity: self.capacity,
             transform: Some(Box::new(move |source_rx, final_tx| {
-                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(32);
+                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(self.capacity);
 
                 if let Some(prev) = previous_transform {
                     prev(source_rx, mid_tx);
                 }
 
-                let combine_clone = combine.clone();
                 tokio::spawn(async move {
-                    // Pull from both streams simultaneously
                     while let Some(item_self) = mid_rx.recv().await {
                         if let Some(item_other) = other_rx.recv().await {
-                            let combined_output = combine_clone(item_self, item_other);
+                            // Combine is fully owned by the task, no Arc needed.
+                            let combined_output = combine(item_self, item_other);
 
                             if final_tx.send(combined_output).await.is_err() {
-                                return; // Downstream is dead
+                                return;
                             }
                         } else {
-                            // The 'other' receiver closed, so we can't zip anymore
-                            return;
+                            return; // The 'other' stream closed
                         }
                     }
                 });
@@ -87,6 +80,7 @@ where
         let previous_transform = self.transform;
 
         PipeLine {
+            capacity: self.capacity,
             transform: Some(Box::new(move |source_rx, final_tx| {
                 // If limit is 0, don't even bother wiring up the rest of the stream
                 if limit == 0 {
@@ -125,8 +119,9 @@ where
         let previous_transform = self.transform;
 
         PipeLine {
+            capacity: self.capacity,
             transform: Some(Box::new(move |source_rx, final_tx| {
-                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(32);
+                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(self.capacity);
 
                 if let Some(prev) = previous_transform {
                     prev(source_rx, mid_tx);
@@ -158,8 +153,9 @@ where
         let previous_transform = self.transform;
 
         PipeLine {
+            capacity: self.capacity,
             transform: Some(Box::new(move |source_rx, final_tx| {
-                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(32);
+                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(self.capacity);
 
                 if let Some(prev) = previous_transform {
                     prev(source_rx, mid_tx);
@@ -184,5 +180,37 @@ where
                 });
             })),
         }
+    }
+
+    /// Acts as a dedicated shock-absorber stage with a custom queue size
+    pub fn buffer(self, size: usize) -> PipeLine<In, Out> {
+        let previous_transform = self.transform;
+        let baseline_capacity = self.capacity;
+
+        PipeLine {
+            capacity: baseline_capacity, // Preserve the default for downstream
+            transform: Some(Box::new(move |source_rx, final_tx| {
+                // This specific stage gets the massive capacity
+                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(size);
+
+                if let Some(prev) = previous_transform {
+                    prev(source_rx, mid_tx);
+                }
+
+                tokio::spawn(async move {
+                    while let Some(item) = mid_rx.recv().await {
+                        if final_tx.send(item).await.is_err() {
+                            break;
+                        }
+                    }
+                });
+            })),
+        }
+    }
+
+    /// Permanently changes the default capacity for all subsequent channels
+    pub fn set_capacity(mut self, size: usize) -> Self {
+        self.capacity = size;
+        self
     }
 }

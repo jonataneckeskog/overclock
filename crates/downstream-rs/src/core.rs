@@ -7,14 +7,6 @@ where
     In: Send + 'static,
     Out: Send + 'static,
 {
-    /// Attaches a real data source and defines the starting type for the network
-    pub fn stream<NewIn>(self, rx: mpsc::Receiver<NewIn>) -> PipeLine<NewIn, NewIn>
-    where
-        NewIn: Send + 'static,
-    {
-        panic!("TODO: Implement stream source injection");
-    }
-
     /// Transforms the data from type `Out` to type `NewOut`
     pub fn pipe<F, NewOut>(self, transform: F) -> PipeLine<In, NewOut>
     where
@@ -25,8 +17,9 @@ where
         let previous_transform = self.transform;
 
         PipeLine {
+            capacity: self.capacity,
             transform: Some(Box::new(move |source_rx, final_tx| {
-                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(32);
+                let (mid_tx, mut mid_rx) = tokio::sync::mpsc::channel::<Out>(self.capacity);
 
                 if let Some(prev) = previous_transform {
                     prev(source_rx, mid_tx);
@@ -46,11 +39,57 @@ where
         }
     }
 
-    /// The terminal node: consumes the blueprint, wires all channels, and fires up the Tokio tasks
-    pub fn sink<F>(self, action: F)
+    /// Allows free-form composition by passing the pipeline through a custom function
+    pub fn apply<F, NewOut>(self, custom_stage: F) -> PipeLine<In, NewOut>
+    where
+        F: FnOnce(Self) -> PipeLine<In, NewOut>,
+    {
+        custom_stage(self)
+    }
+
+    /// The terminal node: consumes the blueprint, compiles all channels, and fires up the async execution
+    pub fn sink<F>(mut self, source_rx: mpsc::Receiver<In>, action: F)
     where
         F: Fn(Out) + Send + Sync + 'static,
     {
-        panic!("TODO: Implement sink, wire channels, and start execution");
+        let (final_tx, mut final_rx) = mpsc::channel::<Out>(self.capacity);
+
+        if let Some(compile_pipeline) = self.transform.take() {
+            compile_pipeline(source_rx, final_tx);
+        }
+
+        tokio::spawn(async move {
+            while let Some(item) = final_rx.recv().await {
+                action(item);
+            }
+        });
+    }
+
+    // Leaves the exhaust pipe open and hands out the live wire
+    pub fn into_stream(
+        mut self,
+        source_rx: tokio::sync::mpsc::Receiver<In>,
+    ) -> tokio::sync::mpsc::Receiver<Out> {
+        let (final_tx, final_rx) = tokio::sync::mpsc::channel::<Out>(self.capacity);
+
+        if let Some(compile) = self.transform.take() {
+            compile(source_rx, final_tx);
+        }
+
+        final_rx
+    }
+}
+
+impl<In> PipeLine<In, ()>
+where
+    In: Send + 'static,
+{
+    // Runs in the background and returns nothing
+    pub fn run(mut self, source_rx: tokio::sync::mpsc::Receiver<In>) {
+        let (final_tx, mut final_rx) = tokio::sync::mpsc::channel::<()>(1);
+        if let Some(compile) = self.transform.take() {
+            compile(source_rx, final_tx);
+        }
+        tokio::spawn(async move { while final_rx.recv().await.is_some() {} });
     }
 }
