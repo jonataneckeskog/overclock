@@ -2,9 +2,6 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 /// A push-based asynchronous data pipeline.
-/// 
-/// Pipelines are built by chaining operators and are "compiled" into background
-/// tasks when run. They support linear transformations, branching, and parallel processing.
 pub struct Pipeline<In, Out> {
     pub capacity: usize,
     pub transform: Option<
@@ -21,8 +18,13 @@ impl<T> Pipeline<T, T>
 where
     T: Send + 'static,
 {
-    /// Creates a new identity pipeline with a specific channel capacity.
-    /// Items are passed through untouched until further operators are added.
+    /// Creates a new identity pipeline.
+    ///
+    /// The `capacity` dictates the internal channel buffer size:
+    /// - **Higher capacity** increases memory usage but maximizes throughput by reducing
+    ///   task scheduling overhead and context switching.
+    /// - **Lower capacity** tightly bounds memory footprint but triggers aggressive backpressure,
+    ///   forcing upstream stages to pause frequently if downstream slows down.
     pub fn with_capacity(capacity: usize) -> Self {
         Pipeline {
             capacity,
@@ -39,7 +41,7 @@ where
         }
     }
 
-    /// The standard entry point for building a pipeline with a default capacity of 32.
+    /// The standard entry point with a default capacity of 32.
     pub fn start() -> Self {
         Self::with_capacity(32)
     }
