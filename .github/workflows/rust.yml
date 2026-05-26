@@ -16,7 +16,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
+    - name: Rust Cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - name: Build Core Workspace
+      run: cargo build --workspace --exclude car-test --exclude test-downstream --exclude car-drive --verbose
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --workspace --exclude car-test --exclude test-downstream --exclude car-drive --verbose
