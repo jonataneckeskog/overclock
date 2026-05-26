@@ -1,14 +1,16 @@
-pub mod ops;
+mod ops;
 mod pipeline;
 
 pub use pipeline::Pipeline;
 
 /// A declarative macro for building pipelines.
-/// 
+///
 /// # Example
 /// ```
-/// let p = pipeline![
-///     pipe(|x| Some(x * 2)),
+/// use downstream_rs::pipeline;
+///
+/// let _p = pipeline![
+///     pipe(|x: u64| Some(x * 2)),
 ///     sink(|x| println!("{}", x))
 /// ];
 /// ```
