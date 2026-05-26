@@ -1,26 +1,28 @@
 mod api;
 mod server;
+mod world;
 
 use api::{CarCommand, CarSensorData, create_bevy_channels};
 use bevy::prelude::*;
 use tokio::runtime::Runtime;
+use world::{Hitbox, SpawnSettings, despawn_system, move_npc_cars, spawning_system};
 
+// Generic movement data
 #[derive(Component)]
-struct Movable {
-    velocity: f32,
-    acceleration: f32,
+pub struct Movable {
+    pub velocity: f32,
+    pub acceleration: f32,
 }
 
+// Generic steering data
 #[derive(Component)]
-struct Steerable {
-    steering_angle: f32,
+pub struct Steerable {
+    pub steering_angle: f32,
 }
 
+// A simple marker component to identify cars specifically
 #[derive(Component)]
-struct Car;
-
-#[derive(Component)]
-struct Obstacle;
+pub struct Car;
 
 #[derive(Resource)]
 struct ControlChannels {
@@ -31,7 +33,6 @@ struct ControlChannels {
 fn main() {
     let (bevy_channels, command_tx, sensor_rx) = create_bevy_channels();
 
-    // Spawn the WebSocket server in a background Tokio runtime
     let rt = Runtime::new().unwrap();
     rt.spawn(async move {
         println!("Starting Car API Server on ws://127.0.0.1:9001");
@@ -42,6 +43,7 @@ fn main() {
 
     App::new()
         .add_plugins(DefaultPlugins)
+        .init_resource::<SpawnSettings>()
         .insert_resource(ControlChannels {
             command_rx: bevy_channels.command_rx,
             sensor_tx: bevy_channels.sensor_tx,
@@ -54,6 +56,10 @@ fn main() {
                 apply_physics,
                 broadcast_sensors,
                 camera_follow,
+                spawning_system,
+                despawn_system,
+                move_npc_cars,
+                collision_system,
             ),
         )
         .run();
@@ -62,6 +68,7 @@ fn main() {
 fn setup(mut commands: Commands) {
     commands.spawn(Camera2d);
 
+    // Player Car
     commands.spawn((
         Sprite {
             color: Color::srgb(0.0, 1.0, 0.0),
@@ -71,27 +78,16 @@ fn setup(mut commands: Commands) {
         Transform::from_xyz(0.0, 0.0, 1.0),
         Car,
         Movable {
-            velocity: 0.0,
+            velocity: 10.0,
             acceleration: 0.0,
         },
         Steerable {
             steering_angle: 0.0,
         },
+        Hitbox {
+            size: Vec2::new(35.0, 15.0),
+        },
     ));
-
-    for i in 0..15 {
-        let x = (i as f32 * 400.0) % 2000.0 - 1000.0;
-        let y = (i as f32 * 250.0) % 1000.0 - 500.0;
-        commands.spawn((
-            Sprite {
-                color: Color::srgb(1.0, 0.0, 0.0),
-                custom_size: Some(Vec2::new(30.0, 30.0)),
-                ..default()
-            },
-            Transform::from_xyz(x, y, 0.0),
-            Obstacle,
-        ));
-    }
 }
 
 fn read_commands(
@@ -122,26 +118,77 @@ fn apply_physics(time: Res<Time>, mut query: Query<(&mut Movable, &Steerable, &m
     }
 }
 
+fn collision_system(
+    mut car_query: Query<(&mut Movable, &Transform, &Hitbox), With<Car>>,
+    other_query: Query<(&Transform, &Hitbox), Without<Car>>,
+) {
+    if let Some((mut movable, car_transform, car_hitbox)) = car_query.iter_mut().next() {
+        let car_pos = car_transform.translation.truncate();
+        let car_half_size = car_hitbox.size / 2.0;
+
+        for (other_transform, other_hitbox) in other_query.iter() {
+            let other_pos = other_transform.translation.truncate();
+            let other_half_size = other_hitbox.size / 2.0;
+
+            let delta = (car_pos - other_pos).abs();
+            let overlap = (car_half_size + other_half_size) - delta;
+
+            if overlap.x > 0.0 && overlap.y > 0.0 {
+                movable.velocity = -movable.velocity * 0.5;
+            }
+        }
+    }
+}
+
 fn broadcast_sensors(
     channels: Res<ControlChannels>,
     car_query: Query<(&Movable, &Transform), With<Car>>,
-    obstacle_query: Query<&Transform, With<Obstacle>>,
+    obstacle_query: Query<&Transform, (With<Hitbox>, Without<Car>)>,
 ) {
     if let Some(car) = car_query.iter().next() {
         let (movable, car_transform) = car;
         let car_pos = car_transform.translation.truncate();
+        let car_rot = car_transform.rotation.to_euler(EulerRot::XYZ).2;
 
-        let mut min_dist = 1000.0;
+        // 4 directions: 0: Right, 1: Up (Forward), 2: Left, 3: Down (Backward)
+        // Relative to car rotation. Forward is transform.right() (+X local)
+        let directions = [
+            car_rot - std::f32::consts::FRAC_PI_2, // Right
+            car_rot,                               // Up (Forward)
+            car_rot + std::f32::consts::FRAC_PI_2, // Left
+            car_rot + std::f32::consts::PI,        // Down (Backward)
+        ];
+
+        let mut proximity_sensors = vec![1000.0; 4];
+
         for obs_transform in obstacle_query.iter() {
-            let dist = car_pos.distance(obs_transform.translation.truncate());
-            if dist < min_dist {
-                min_dist = dist;
+            let obs_pos = obs_transform.translation.truncate();
+            let to_obs = obs_pos - car_pos;
+            let dist = to_obs.length();
+
+            if dist < 1000.0 {
+                let angle_to_obs = to_obs.to_angle();
+
+                for (i, &dir_angle) in directions.iter().enumerate() {
+                    let mut diff = (angle_to_obs - dir_angle).abs();
+                    while diff > std::f32::consts::PI {
+                        diff = (diff - std::f32::consts::TAU).abs();
+                    }
+
+                    // If obstacle is within 45 degrees of the sensor direction
+                    if diff < std::f32::consts::FRAC_PI_4 {
+                        if dist < proximity_sensors[i] {
+                            proximity_sensors[i] = dist;
+                        }
+                    }
+                }
             }
         }
 
         let data = CarSensorData {
             velocity: movable.velocity,
-            proximity: min_dist,
+            rotation: car_rot,
+            proximity_sensors,
         };
         let _ = channels.sensor_tx.try_send(data);
     }

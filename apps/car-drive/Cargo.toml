@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = "0.18.1"
+bevy = { version = "0.18.1", features = ["dynamic_linking"] }
 tokio = { version = "1.52.3", features = ["full"] }
 tokio-stream = "0.1.17"
-tokio-tungstenite = "0.26.2"
+tokio-tungstenite = "0.29.0"
 futures = "0.3.32"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+rand = "0.9"
 downstream-rs = { path = "../../crates/downstream-rs" }

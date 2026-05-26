@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1.52.3", features = ["full"] }
+tokio-stream = "0.1.17"
+tokio-tungstenite = "0.29.0"
 downstream-rs = { path = "../../crates/downstream-rs" }
 futures = "0.3.32"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
